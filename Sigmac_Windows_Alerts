@@ -1,0 +1,7 @@
+#!/bin/bash
+
+for rule_category in ./rules/windows/* ; do 
+ for rule in $rule_category/* ; do 
+  ./tools/sigmac -I -t 'elastalert' -c winlogbeat -o /home/malcom/Malcom/elastalert/rules/Sigma_$(basename $rule) $rule; 
+ done;
+done

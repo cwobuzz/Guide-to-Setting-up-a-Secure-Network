@@ -38,19 +38,21 @@ $dlSysmonUrl = "$($SysinternalsDownloadURL)$sysmonZip"
 $dlSysmonPath = "$($dir)$sysmonZip"
 if(!$(Test-Path $dlSysmonPath)){
     Invoke-WebRequest $dlSysmonUrl -OutFile $dlSysmonPath
-    }
+    
 #Unzip Sysmon
 Expand-Archive -Path $dlSysmonPath -DestinationPath $dir
+   } #End Sysmon Download
 
 #Download https://github.com/olafhartong/sysmon-modular/archive/master.zip
 $sysmonmodularZIP = "sysmon-modular.zip" 
 $dlsysmonmodularPath = "$($dir)$sysmonmodularZIP"
 if(!$(Test-Path $dlsysmonmodularPath)) {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest "https://github.com/olafhartong/sysmon-modular/archive/master.zip" -OutFile $dlsysmonmodularPath
-    }
-#unzip sysmon-modular
-Expand-Archive -Path $dlsysmonmodularPath -DestinationPath $dir
-
+    
+    #unzip sysmon-modular
+    Expand-Archive -Path $dlsysmonmodularPath -DestinationPath $dir
+    } #End Sysmon Modular Download
 #Builds batch file
 $batchfile = @"
 
@@ -86,20 +88,23 @@ SET FQDN=$FullyQualifiedDomain
 :: Determine architecture to set Arch Type for the SYSMON Binary
 
 IF EXIST "C:\Program Files (x86)" (
-SET BINARCH=Sysmon64.exe
+SET BINARCH=sysmon64.exe
 SET SERVBINARCH=Sysmon64
 ) ELSE (
-SET BINARCH=Sysmon.exe
+SET BINARCH=sysmon.exe
 SET SERVBINARCH=Sysmon
 )
 
 SET SYSMONDIR=C:\windows\sysmon
 SET SYSMONBIN=%SYSMONDIR%\%BINARCH%
-SET SYSMONCONFIG=%SYSMONDIR%\SysmonConfig.xml
+SET SYSMONCONFIG=%SYSMONDIR%\sysmonconfig.xml
 
-SET GLBSYSMONBIN=\\%DC%\sysvol\%FQDN%\Sysmon\%BINARCH%
-SET GLBSYSMONCONFIG=\\%DC%\sysvol\%FQDN%\Sysmon\sysmonConfig.xml
-  
+:: Check you file path I removed %FQDN% path out but you can put it in as needed
+SET GLBSYSMONBIN=\\%DC%\sysvol\Sysmon\%BINARCH%
+:: SET GLBSYSMONBIN=\\%DC%\sysvol\%FQDN%\Sysmon\%BINARCH%
+SET GLBSYSMONCONFIG=\\%DC%\sysvol\Sysmon\sysmonconfig.xml
+:: SET GLBSYSMONCONFIG=\\%DC%\sysvol\%FQDN%\Sysmon\sysmonconfig.xml
+
 sc query "%SERVBINARCH%" | Find "RUNNING"
 If "%ERRORLEVEL%" EQU "1" (
 goto startsysmon
@@ -129,5 +134,23 @@ goto installsysmon
 goto updateconfig
 )
 "@
-Out-file -FilePath $($dir)SysmonInstall.bat -InputObject $batchfile
+$sysmonbatPath = $($dir + "SysmonInstall.bat")
+Out-file -FilePath $sysmonbatPath -InputObject $batchfile -Encoding ascii
+
+#Create Folder and sets current directory there
+$FileStagingdir = "$env:HOMEPATH\Desktop\Host_Tools\Sysmon\"
+if(-not $(Test-Path $FileStagingdir)){ New-Item -ItemType Directory -Path $FileStagingdir }
+Write-Host "Creating a new folder here: $FileStagingdir"
+Copy-Item -Path $dir\sysmon.exe -Destination $FileStagingdir
+Copy-Item -Path $dir\sysmon64.exe -Destination $FileStagingdir
+Copy-Item -Path $dir\SysmonInstall.bat -Destination $FileStagingdir
+Copy-Item -Path $dir\sysmon-modular-master\sysmonconfig.xml -Destination $FileStagingdir
+
+#Checks for PSsession to DC
+if(!$(Get-PSSession -ComputerName $FullyQualifiedDomainNameofDC)) {
+    Write-Host "Please make a PSession with your DC as Domain Admin and rerun script, it will skip downloading if files are inplace"    
+    } else {
+        $SysVolPath = "\\$FullyQualifiedDomainNameofDC\sysvol\"
+        Copy-Item $FileStagingdir -Destination $SysVolPath -Force -Recurse
+    }
 } #End of Function

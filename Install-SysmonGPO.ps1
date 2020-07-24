@@ -99,11 +99,14 @@ SET SYSMONDIR=C:\windows\sysmon
 SET SYSMONBIN=%SYSMONDIR%\%BINARCH%
 SET SYSMONCONFIG=%SYSMONDIR%\sysmonconfig.xml
 
-:: Check you file path I removed %FQDN% path out but you can put it in as needed
+:: Checks file path for %FQDN% 
+IF EXIST \\%DC%\sysvol\%FQDN% (
+SET GLBSYSMONBIN=\\%DC%\sysvol\%FQDN%\Sysmon\%BINARCH%   
+SET GLBSYSMONCONFIG=\\%DC%\sysvol\%FQDN%\Sysmon\sysmonconfig.xml
+) ELSE (
 SET GLBSYSMONBIN=\\%DC%\sysvol\Sysmon\%BINARCH%
-:: SET GLBSYSMONBIN=\\%DC%\sysvol\%FQDN%\Sysmon\%BINARCH%
 SET GLBSYSMONCONFIG=\\%DC%\sysvol\Sysmon\sysmonconfig.xml
-:: SET GLBSYSMONCONFIG=\\%DC%\sysvol\%FQDN%\Sysmon\sysmonconfig.xml
+) 
 
 sc query "%SERVBINARCH%" | Find "RUNNING"
 If "%ERRORLEVEL%" EQU "1" (
@@ -121,10 +124,14 @@ chdir %SYSMONDIR%
 sc config %SERVBINARCH% start= auto
   
 :updateconfig
+
+fc  %SYSMONCONFIG% %GLBSYSMONCONFIG% > nul
+If “%ERRORLEVEL%” EQU “1” (
 xcopy %GLBSYSMONCONFIG% %SYSMONCONFIG% /y
 chdir %SYSMONDIR%
 %SYSMONBIN% -c %SYSMONCONFIG%
 EXIT /B 0
+)
   
 :startsysmon
 sc start %SERVBINARCH%
@@ -153,4 +160,13 @@ if(!$(Get-PSSession -ComputerName $FullyQualifiedDomainNameofDC)) {
         $SysVolPath = "\\$FullyQualifiedDomainNameofDC\sysvol\"
         Copy-Item $FileStagingdir -Destination $SysVolPath -Force -Recurse
     }
+    Write-Host "Now that we have all the files within the Sysmon folder within SYSVOL, we can now create the GPO to perform the deployment. Take the following steps to create the GPO:
+
+    Create a new GPO and title it SYSMON Deploy
+    Navigate to Computer Configuration –> Policies –> Windows Settings –> Scripts (Startup/Shutdown)
+    Right-click on top of Startup and select Properties.
+    In the Startup Properties window, click on Add, then on Browser and navigate to the SysmonStartup.bat
+    Click the OK buttons to save and close.
+    Lastly, linked the GPO to all the OUs you wish to deploy Sysmon to.
+"
 } #End of Function

@@ -27,9 +27,9 @@ function Install-SysmonGPO {
             
 #Create Folder and sets current directory there
 $dir = "$env:HOMEPATH\Desktop\Host_Tools\"
-if(-not $(Test-Path $dir)){ New-Item -ItemType Directory -Path $dir }
+if(-not $(Test-Path $dir)){ New-Item -ItemType Directory -Path $dir -InformationAction SilentlyContinue }
 Write-Host "Creating a new folder here: $dir"
-Set-Location $dir
+Set-Location $dir -InformationAction SilentlyContinue
 
 #Downloads current Sysmon to $dir
 $SysinternalsDownloadURL = "https://download.sysinternals.com/files/"
@@ -50,7 +50,8 @@ $dlsysmonmodularPath = "$($dir)$sysmonmodularZIP"
 if(!$(Test-Path $dlsysmonmodularPath)) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest "https://github.com/olafhartong/sysmon-modular/archive/master.zip" -OutFile $dlsysmonmodularPath
-    Write-Information -MessageData "Please take the time to build your Sysmon Config using the files downloaded from olafhartong/sysmon-modular. It will help to tune your sysmon to your envirment" -InformationAction Continue
+    Write-Information -MessageData "Please take the time to build your Sysmon Config using the files downloaded from olafhartong/sysmon-modular on github. 
+    It will help to tune your sysmon to your envirment" -InformationAction Continue
     #unzip sysmon-modular
     Expand-Archive -Path $dlsysmonmodularPath -DestinationPath $dir
     } #End Sysmon Modular Download
@@ -147,21 +148,22 @@ Out-file -FilePath $sysmonbatPath -InputObject $batchfile -Encoding ascii
 
 #Create Folder and sets current directory there
 $FileStagingdir = "$env:HOMEPATH\Desktop\Host_Tools\Sysmon\"
-if(-not $(Test-Path $FileStagingdir)){ New-Item -ItemType Directory -Path $FileStagingdir }
-Write-Host "Creating a new folder here: $FileStagingdir"
+if(-not $(Test-Path $FileStagingdir)){ New-Item -ItemType Directory -Path $FileStagingdir -InformationAction SilentlyContinue}
+Write-Information -InformationAction Continue "Creating a new folder here: $FileStagingdir"
 Copy-Item -Path $dir\sysmon.exe -Destination $FileStagingdir
 Copy-Item -Path $dir\sysmon64.exe -Destination $FileStagingdir
 Copy-Item -Path $dir\SysmonInstall.bat -Destination $FileStagingdir
 Copy-Item -Path $dir\sysmon-modular-master\sysmonconfig.xml -Destination $FileStagingdir
 
 #Checks for PSsession to DC
-if(!$(Get-PSSession -ComputerName $FullyQualifiedDomainNameofDC)) {
-    Write-Host "Please make a PSession with your DC as Domain Admin and rerun script, it will skip downloading if files are inplace"    
+if(!$(Get-PSSession -ComputerName $FullyQualifiedDomainNameofDC -ErrorAction SilentlyContinue)) {
+    Write-Host "Please make a PSession with your DC as Domain Admin and rerun script, it will skip downloading if the files are inplace" -BackgroundColor Red   
     } else {
         $SysVolPath = "\\$FullyQualifiedDomainNameofDC\sysvol\"
         Copy-Item $FileStagingdir -Destination $SysVolPath -Force -Recurse
     }
-    Write-Host "Now that we have all the files within the Sysmon folder within SYSVOL, we can now create the GPO to perform the deployment. Take the following steps to create the GPO:
+    Write-Information -InformationAction Continue -Tags "GPOInstruction" -MessageData "Now that we have all the files within the Sysmon folder within SYSVOL, we can now create the GPO to perform the deployment. 
+    Take the following steps to create the GPO:
 
     Create a new GPO and title it SYSMON Deploy
     Navigate to Computer Configuration –> Policies –> Windows Settings –> Scripts (Startup/Shutdown)

@@ -3,7 +3,7 @@ function Install-SysmonGPO {
     .SYNOPSIS 
     Uses existing PS-Session to your DC to install a Sysmon GPO
     .DESCRIPTION
-    This command  downloads the latest Sysmon and Sysmon Modular Config files and builds a GPO to install Sysmon with the config.
+    This command  downloads the latest Sysmon and Sysmon Modular Config files and builds a GPO to install Sysmon with the config. If there is no PSSession just make your connection and rerun the script. It will not download or create anything new if it has the files inplace.
     .PARAMETER FullyQualifiedDomainNameofDC
     The fully qualified Domain name of your DC. Example: dc.corp.local
     .PARAMETER FullyQualifiedDomain
@@ -44,12 +44,13 @@ Expand-Archive -Path $dlSysmonPath -DestinationPath $dir
    } #End Sysmon Download
 
 #Download https://github.com/olafhartong/sysmon-modular/archive/master.zip
+
 $sysmonmodularZIP = "sysmon-modular.zip" 
 $dlsysmonmodularPath = "$($dir)$sysmonmodularZIP"
 if(!$(Test-Path $dlsysmonmodularPath)) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     Invoke-WebRequest "https://github.com/olafhartong/sysmon-modular/archive/master.zip" -OutFile $dlsysmonmodularPath
-    
+    Write-Information -MessageData "Please take the time to build your Sysmon Config using the files downloaded from olafhartong/sysmon-modular. It will help to tune your sysmon to your envirment" -InformationAction Continue
     #unzip sysmon-modular
     Expand-Archive -Path $dlsysmonmodularPath -DestinationPath $dir
     } #End Sysmon Modular Download
@@ -58,7 +59,7 @@ $batchfile = @"
 
 @echo off
 :: Author: Ryan Watson 
-:: Edited for Install-SysmonGPG by @CWObuzz
+:: Edited for Install-SysmonGPO by @CWObuzz
 :: Twitter: @gentlemanwatson
 :: Version: 2.0
 :: Credits: Credit to Syspanda.com and their Sysmon GPO article for the kick off point 

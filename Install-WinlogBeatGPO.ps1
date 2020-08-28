@@ -48,12 +48,14 @@ $64WinlogbeatOutPath = "$($dir)$64WinlogbeatZip"
 if(!$(Test-Path $32WinlogbeatOutPath)){
     Invoke-WebRequest $32WinlogbeatURL -OutFile $32WinlogbeatOutPath    
 #Unzip Winlogbeat
-Expand-Archive -Path $32WinlogbeatOutPath -DestinationPath $dir
+Expand-Archive -Path $32WinlogbeatOutPath -DestinationPath $dir 
+Get-ChildItem -Filter *x86 -Directory | Rename-Item -NewName 32WinlogBeat -Force
    } #End 32 Winlogbeat Download
 if(!$(Test-Path $64WinlogbeatOutPath)){
     Invoke-WebRequest $64WinlogbeatURL -OutFile $64WinlogbeatOutPath    
     #Unzip Winlogbeat
     Expand-Archive -Path $64WinlogbeatOutPath -DestinationPath $dir
+    Get-ChildItem -Filter *_64 -Directory | Rename-Item -NewName 64WinlogBeat -Force
     Write-Host -BackgroundColor Red "Configure Both 32bit and 64bit WinLogbeat configuration files to work on your network, then rerun this script for it to finish installing!!!"    
     Break
     } #End 64 Winlogbeat Download
@@ -80,86 +82,91 @@ SET FQDN=$FullyQualifiedDomain
 :: Determine architecture to set Arch Type for the Winlogbeat Binary
 
 IF EXIST "C:\Program Files (x86)" (
-SET BINARCH=sysmon64.exe
-SET SERVBINARCH=Sysmon64
+SET WINLOGBEATDIR=C:\windows\Elastic\64Winlogbeat
+SET ELASTICDIR=Elastic\64Winlogbeat
 ) ELSE (
-SET BINARCH=sysmon.exe
-SET SERVBINARCH=Sysmon
+SET WINLOGBEATDIR=C:\windows\Elastic\32Winlogbeat
+SET ELASTICDIR=Elastic\32Winlogbeat
 )
 
-SET SYSMONDIR=C:\windows\sysmon
-SET SYSMONBIN=%SYSMONDIR%\%BINARCH%
-SET SYSMONCONFIG=%SYSMONDIR%\sysmonconfig.xml
+SET BINARCH=winlogbeat.exe
+SET SERVBINARCH=Winlogbeat
+SET WINLOGBEATBIN=%WINLOGBEATDIR%\%BINARCH%
+SET WINLOGBEATCONFIG=%WINLOGBEATDIR%\winlogbeat.yml
 
 :: Checks file path for %FQDN% 
 IF EXIST \\%DC%\sysvol\%FQDN% (
-SET GLBSYSMONBIN=\\%DC%\sysvol\%FQDN%\Sysmon\%BINARCH%   
-SET GLBSYSMONCONFIG=\\%DC%\sysvol\%FQDN%\Sysmon\sysmonconfig.xml
+SET GLBWINLOGBEATBIN=\\%DC%\sysvol\%FQDN%\%ELASTICDIR%\%BINARCH%   
+SET GLBWINLOGBEATCONFIG=\\%DC%\sysvol\%FQDN%\%ELASTICDIR%\winlogbeat.yml
 ) ELSE (
-SET GLBSYSMONBIN=\\%DC%\sysvol\Sysmon\%BINARCH%
-SET GLBSYSMONCONFIG=\\%DC%\sysvol\Sysmon\sysmonconfig.xml
+SET GLBWINLOGBEATBIN=\\%DC%\sysvol\%ELASTICDIR%\%BINARCH%
+SET GLBWINLOGBEATCONFIG=\\%DC%\sysvol\%ELASTICDIR%\winlogbeat.yml
 ) 
 
 sc query "%SERVBINARCH%" | Find "RUNNING"
 If "%ERRORLEVEL%" EQU "1" (
-goto startsysmon
+goto startwinlogbeat
 )
   
-:installsysmon
-IF Not EXIST %SYSMONDIR% (
-mkdir %SYSMONDIR%
+:installwinlogbeat
+IF Not EXIST %WINLOGBEATDIR% (
+mkdir %WINLOGBEATDIR%
 )
-xcopy %GLBSYSMONBIN% %SYSMONDIR% /y
-xcopy %GLBSYSMONCONFIG% %SYSMONDIR% /y
-chdir %SYSMONDIR%
-%SYSMONBIN% -i %SYSMONCONFIG% -accepteula -h md5,sha256 -n -l
-sc config %SERVBINARCH% start= auto
+xcopy %GLBWINLOGBEATBIN% %WINLOGBEATDIR% /y
+xcopy %GLBWINLOGBEATCONFIG% %WINLOGBEATDIR% /y
+chdir %WINLOGBEATDIR%
+sc create winlogbeat DisplayName= winlogbeat binpath= "%WINLOGBEATBIN% --environment=windows_service -c %WINLOGBEATCONFIG% --path.home %WINLOGBEATDIR% --path.data 'C:\ProgramData\winlogbeat' --path.logs 'C:\ProgramData\winlogbeat\logs' -E logging.files.redirect_stderr=true"
+sc config %SERVBINARCH% start= delayed-auto
   
 :updateconfig
 
-fc  %SYSMONCONFIG% %GLBSYSMONCONFIG% > nul
+fc  %WINLOGBEATCONFIG% %GLBWINLOGBEATCONFIG% > nul
 If “%ERRORLEVEL%” EQU “1” (
-xcopy %GLBSYSMONCONFIG% %SYSMONCONFIG% /y
-chdir %SYSMONDIR%
-%SYSMONBIN% -c %SYSMONCONFIG%
+xcopy %GLBWINLOGBEATCONFIG% %WINLOGBEATCONFIG% /y
+sc stop %SERBINARCH%  
+sc start %SERBINARCH%
 EXIT /B 0
 )
   
 :startsysmon
 sc start %SERVBINARCH%
 If "%ERRORLEVEL%" EQU "1060" (
-goto installsysmon
+goto installwinlogbeat
 ) ELSE (
 goto updateconfig
 )
 "@
-$sysmonbatPath = $($dir + "SysmonInstall.bat")
-Out-file -FilePath $sysmonbatPath -InputObject $batchfile -Encoding ascii
+$WinlogbeatbatPath = $($dir + "WinlogbeatInstall.bat")
+Out-file -FilePath $WinlogbeatbatPath -InputObject $batchfile -Encoding ascii
 
 #Create Folder and sets current directory there
-$FileStagingdir = "$env:HOMEPATH\Desktop\Host_Tools\Sysmon\"
-if(-not $(Test-Path $FileStagingdir)){ New-Item -ItemType Directory -Path $FileStagingdir -InformationAction SilentlyContinue}
-Write-Information -InformationAction Continue "Creating a new folder here: $FileStagingdir"
-Copy-Item -Path $dir\sysmon.exe -Destination $FileStagingdir
-Copy-Item -Path $dir\sysmon64.exe -Destination $FileStagingdir
-Copy-Item -Path $dir\SysmonInstall.bat -Destination $FileStagingdir
-Copy-Item -Path $dir\sysmon-modular-master\sysmonconfig.xml -Destination $FileStagingdir
+$32FileStagingdir = "$env:HOMEPATH\Desktop\Host_Tools\Elastic\32Winlogbeat"
+$64FileStagingdir = "$env:HOMEPATH\Desktop\Host_Tools\Elastic\64Winlogbeat"
+if(-not $(Test-Path $32FileStagingdir)){ New-Item -ItemType Directory -Path $32FileStagingdir -InformationAction SilentlyContinue}
+if(-not $(Test-Path $64FileStagingdir)){ New-Item -ItemType Directory -Path $64FileStagingdir -InformationAction SilentlyContinue}
+Write-Information -InformationAction Continue "Creating a two new folders here: $32FileStagingdir and $64FileStagingdir"
+
+Copy-Item -Path $dir\32Winlogbeat\Winlogbeat.exe -Destination $32FileStagingdir
+Copy-Item -Path $dir\32Winlogbeat\Winlogbeat.yml -Destination $32FileStagingdir
+Copy-Item -Path $dir\64Winlogbeat\Winlogbeat.exe -Destination $64FileStagingdir
+Copy-Item -Path $dir\64Winlogbeat\Winlogbeat.yml -Destination $64FileStagingdir
 
 #Checks for PSsession to DC
 if(!$(Get-PSSession -ComputerName $FullyQualifiedDomainNameofDC -ErrorAction SilentlyContinue)) {
     Write-Host "Please make a PSession with your DC as Domain Admin and rerun script, it will skip downloading if the files are inplace" -BackgroundColor Red   
     } else {
         $SysVolPath = "\\$FullyQualifiedDomainNameofDC\sysvol\"
-        Copy-Item $FileStagingdir -Destination $SysVolPath -Force -Recurse
+        Copy-Item -Path $32FileStagingdir -Destination $SysVolPath -Force -Recurse
+        Copy-Item -Path $64FileStagingdir -Destination $SysVolPath -Force -Recurse
     }
     Write-Information -InformationAction Continue -Tags "GPOInstruction" -MessageData "Now that we have all the files within the Sysmon folder within SYSVOL, we can now create the GPO to perform the deployment. 
     Take the following steps to create the GPO:
 
-    Create a new GPO and title it SYSMON Deploy
+    Create a new GPO and title it Winlogbeat Deploy
     Navigate to Computer Configuration –> Policies –> Windows Settings –> Scripts (Startup/Shutdown)
     Right-click on top of Startup and select Properties.
-    In the Startup Properties window, click on Add, then on Browser and navigate to the SysmonStartup.bat
+    In the Startup Properties window, click on Add, then on Browser and navigate to the WinlogbeatInstall.bat
     Click the OK buttons to save and close.
-    Lastly, linked the GPO to all the OUs you wish to deploy Sysmon to.
+    Lastly, linked the GPO to all the OUs you wish to deploy Winlogbeat to.
 "
 } #End of Function
